@@ -4,6 +4,7 @@ import ast
 import json
 from typing import Optional, List
 import sklearn as sk
+import swifter
 
 # Se cargan los archivos CSV
 df=pd.read_csv("Movies/movies_dataset.csv", dtype={"popularity": str})
@@ -36,9 +37,9 @@ def clear_dict(cadena):
                         cadena = json.loads(cadena.replace("'", '"'))
                 return cadena
         
-# Aplicar la función de conversión a varias columnas
+# Aplicar la función de conversión a varias columnas usando swifter
 columns_to_clear = ["belongs_to_collection", "genres", "production_companies", "production_countries", "spoken_languages", "cast", "crew"]
-df[columns_to_clear] = df[columns_to_clear].map(clear_dict)
+df[columns_to_clear] = df[columns_to_clear].swifter.applymap(clear_dict)
 
 #Transformacion 2
 
@@ -70,7 +71,8 @@ df["release_year"] = df["release_date"].dt.year
 #Transformacion 4
 
 # Creacion de la columna 'return' que representa la relación entre la ganancia y el presupuesto
-df['return'] = df.apply(lambda row: row['revenue'] / row['budget'] if row['budget'] > 0 else 0, axis=1)
+df['return'] = df['revenue'] / df['budget']
+df['return'] = df['return'].fillna(0)
 
 #Transformacion 5
 
@@ -196,7 +198,6 @@ df_director_success = df[['id', 'crew', 'title', 'release_date', 'revenue', 'bud
 
 @app.get('/actor/success')
 def get_actor(nombre_actor: str):
-
     # Se busca el actor en la columna 'cast' y se muestra la cantidad de peliculas en las que ha participado, el retorno total y el promedio de retorno
     actor_movies = df_actor_success[df_actor_success['cast'].apply(lambda x: isinstance(x, list) and any(nombre_actor.lower() in actor['name'].lower() for actor in x))]
     if actor_movies.empty:
@@ -210,7 +211,6 @@ def get_actor(nombre_actor: str):
         "retorno_total": retorno_total,
         "promedio_retorno": promedio_retorno
     }
-
 
 @app.get('/director/success')
 def get_director(nombre_director: str):

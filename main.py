@@ -22,6 +22,9 @@ credits_df['id'] = credits_df['id'].astype(int)
 # Se unen los DataFrames en base a la columna 'id'
 df = pd.merge(df, credits_df, on='id', how='left')
 
+# Usar únicamente la mitad del DataFrame
+df = df.sample(frac=0.75, random_state=1).reset_index(drop=True)
+
 #Transformacion 1
 
 # Función para convertir cadenas de texto en diccionarios o listas de diccionarios, para acceder directamente a los valores
@@ -35,14 +38,9 @@ def clear_dict(cadena):
                         cadena = json.loads(cadena.replace("'", '"'))
                 return cadena
         
-# Se aplica la funcion, y se guardan los datos en las columnas correspondientes
-df["belongs_to_collection"] = df["belongs_to_collection"].apply(clear_dict) 
-df["genres"] = df["genres"].apply(clear_dict)
-df["production_companies"] = df["production_companies"].apply(clear_dict)
-df["production_countries"] = df["production_countries"].apply(clear_dict)
-df["spoken_languages"] = df["spoken_languages"].apply(clear_dict)
-df["cast"] = df["cast"].apply(clear_dict)
-df["crew"] = df["crew"].apply(clear_dict)
+# Aplicar la función de conversión a varias columnas
+columns_to_clear = ["belongs_to_collection", "genres", "production_companies", "production_countries", "spoken_languages", "cast", "crew"]
+df[columns_to_clear] = df[columns_to_clear].map(clear_dict)
 
 #Transformacion 2
 

@@ -23,7 +23,7 @@ credits_df['id'] = credits_df['id'].astype(int)
 df = pd.merge(df, credits_df, on='id', how='left')
 
 # Usar únicamente la mitad del DataFrame
-df = df.sample(frac=0.25, random_state=1).reset_index(drop=True)
+df = df.sample(n=10000, random_state=1).reset_index(drop=True)
 
 #Transformacion 1
 

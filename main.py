@@ -1,0 +1,302 @@
+import pandas as pd
+from fastapi import FastAPI
+import ast
+import json
+from typing import Optional, List
+import sklearn as sk
+
+# Se cargan los archivos CSV
+df=pd.read_csv("Movies/movies_dataset.csv", dtype={"popularity": str})
+
+credits_df = pd.read_csv("Movies/credits.csv")
+
+df.drop([19730,29503,35587], inplace=True) #Elimino esas 3 filas debido a que dan error, al revisarlas manualmente se ve que les falta informacion
+
+# Se determino con este codigo que las 3 filas eliminadas son las que tienen valores nulos en la columna 'release_date'
+#nan_rows = df[df['release_date'].isna()]
+
+# Se cambia el valor del id a int despues de eliminar las 3 filas
+df['id'] = df['id'].astype(int)
+credits_df['id'] = credits_df['id'].astype(int)
+
+# Se unen los DataFrames en base a la columna 'id'
+df = pd.merge(df, credits_df, on='id', how='left')
+
+#Transformacion 1
+
+# Función para convertir cadenas de texto en diccionarios o listas de diccionarios, para acceder directamente a los valores
+def clear_dict(cadena): 
+        if cadena and isinstance(cadena, str):
+                if isinstance(cadena, (dict, list)):
+                        return cadena
+                try:
+                        cadena = ast.literal_eval(cadena)
+                except (ValueError, SyntaxError):
+                        cadena = json.loads(cadena.replace("'", '"'))
+                return cadena
+        
+# Se aplica la funcion, y se guardan los datos en las columnas correspondientes
+df["belongs_to_collection"] = df["belongs_to_collection"].apply(clear_dict) 
+df["genres"] = df["genres"].apply(clear_dict)
+df["production_companies"] = df["production_companies"].apply(clear_dict)
+df["production_countries"] = df["production_countries"].apply(clear_dict)
+df["spoken_languages"] = df["spoken_languages"].apply(clear_dict)
+df["cast"] = df["cast"].apply(clear_dict)
+df["crew"] = df["crew"].apply(clear_dict)
+
+#Transformacion 2
+
+# Se cambia el tipo de las columnas 'revenue' y 'budget' a float
+df["revenue"]=df["revenue"].astype(float)
+
+df["budget"]=df["budget"].astype(float)
+
+df["revenue"]=df["revenue"].fillna(0)
+
+df["budget"]=df["budget"].fillna(0)
+
+# Y también la columna 'popularity' a float y 'title' a string
+
+df["popularity"]=df["popularity"].astype(float)
+
+df["title"]=df["title"].astype(str)
+
+#Transformacion 3
+
+# Se convierte la columna 'release_date' a datetime
+df["release_date"] = pd.to_datetime(df["release_date"], format='%Y-%m-%d',errors='coerce') #Debido a un error, se agrego el error="coerce"
+df = df.dropna(subset="release_date")
+
+# y se crea la columna release_year
+df["release_year"] = df["release_date"].dt.year
+
+
+#Transformacion 4
+
+# Creacion de la columna 'return' que representa la relación entre la ganancia y el presupuesto
+df['return'] = df.apply(lambda row: row['revenue'] / row['budget'] if row['budget'] > 0 else 0, axis=1)
+
+#Transformacion 5
+
+# Eliminacion de las columnas que no se necesitan
+df.drop("video", axis=1, inplace=True)
+df.drop("imdb_id", axis=1, inplace=True)
+df.drop("adult", axis=1, inplace=True)
+df.drop("original_title", axis=1, inplace=True)
+df.drop("poster_path", axis=1, inplace=True)
+df.drop("homepage", axis=1, inplace=True)
+
+# Mantener una columna con el título original
+df["original_title"] = df["title"]
+
+# Función para formatear los títulos para incluir el año entre paréntesis si hay duplicados
+def format_title(row):
+    title = row['title']
+    if df[(df['title'] == row['title']) & (df.index != row.name)].shape[0] > 0:
+        title = f"{row['title']} ({row['release_year']})"
+    return title
+
+# Actualizar los títulos en el DataFrame
+df["title"] = df.apply(format_title, axis=1)
+
+# Creacion de la API
+app= FastAPI()
+app.title = "Movies List"
+app.version = "1.0.0"
+
+# Se designa a cada mes su respectivo valor numerico
+meses = { 'enero': 1,
+          'febrero': 2, 
+          'marzo': 3, 
+          'abril': 4, 
+          'mayo': 5, 
+          'junio': 6, 
+          'julio': 7, 
+          'agosto': 8, 
+          'septiembre': 9, 
+          'octubre': 10, 
+          'noviembre': 11, 
+          'diciembre': 12 } 
+
+# Se crea el endpoint para obtener la cantidad de filmaciones por mes
+@app.get('/movies/release_date')
+def cantidad_filmaciones_mes(mes: str):
+     mes = mes.lower()
+     if mes not in meses: return {"error": "Mes inválido. Por favor, ingrese un mes en español correctamente."}
+     mes_num = meses[mes] 
+     peliculas_mes = df[df['release_date'].dt.month == mes_num] 
+     cantidad = peliculas_mes.shape[0] 
+     return {"mes": mes, "cantidad": cantidad, "peliculas": peliculas_mes['title'].tolist()}
+
+# Se designa a cada dia de la semana su respectivo valor numerico
+dias_semana = {
+    'lunes': 0,
+    'martes': 1,
+    'miércoles': 2,
+    'jueves': 3,
+    'viernes': 4,
+    'sábado': 5,
+    'domingo': 6
+}
+
+# Se crea el endpoint para obtener la cantidad de filmaciones por dia
+@app.get('/movies/release_date_day')
+def cantidad_filmaciones_dia(dia: str):
+    dia = dia.lower()
+    if dia not in dias_semana:
+        return {"error": "Día inválido. Por favor, ingrese un día en español correctamente."}
+    dia_num = dias_semana[dia]
+    peliculas_dia = df[df['release_date'].dt.dayofweek == dia_num]
+    cantidad = peliculas_dia.shape[0]
+    return {"dia": dia, "cantidad": cantidad, "peliculas": peliculas_dia['title'].tolist()}
+
+# Se crea el endpoint para obtener el score de una pelicula y el año de estreno
+@app.get('/movies/score')
+def score_titulo(titulo_de_la_filmacion: str):
+    # Se busca la película por el título, en caso de no encontrar se avisa, si no es exacto al título se muestran las películas que contienen el texto ingresado 
+    # y en caso de encontrarlo se muestra el título, el año de estreno y el score
+    indices_titulo = df[df['title'].str.lower() == titulo_de_la_filmacion.lower()].index.tolist()
+    if not indices_titulo:
+        matching_movies = df[df['title'].str.lower().str.contains(titulo_de_la_filmacion.lower())]
+        if matching_movies.empty:
+            return {"error": "No se encontró ninguna película con el título proporcionado."}
+        else:
+            return {
+                "message": f"Se encontraron {matching_movies.shape[0]} películas con el título '{titulo_de_la_filmacion}'.",
+                "peliculas": matching_movies[['title', 'release_year']].to_dict(orient='records')
+            }
+    pelicula = df[df['title'].str.lower() == titulo_de_la_filmacion.lower()]
+    titulo = pelicula['title'].values[0]
+    anio_estreno = int(pelicula['release_year'].values[0])
+    score = pelicula['popularity'].values[0]
+    return {"titulo": titulo, "año de estreno": anio_estreno, "score": score}
+
+
+# Se crea el endpoint para obtener el score de una pelicula y el año de estreno
+@app.get('/movies/votes')
+def votos_titulo(titulo_de_la_filmacion: str):
+    # Se busca la película por el título, en caso de no encontrar se avisa, si no es exacto al título se muestran las películas que contienen el texto ingresado 
+    # y en caso de encontrarlo se muestra el título, el año de estreno, el score y el promedio de votos
+
+    indices_titulo = df[df['title'].str.lower() == titulo_de_la_filmacion.lower()].index.tolist()
+    
+    if not indices_titulo:
+        matching_movies = df[df['title'].str.lower().str.contains(titulo_de_la_filmacion.lower())]
+        if matching_movies.empty:
+            return {"error": "No se encontró ninguna película con el título proporcionado."}
+        else:
+            return {
+                "message": f"Se encontraron {matching_movies.shape[0]} películas con el título '{titulo_de_la_filmacion}'.",
+                "peliculas": matching_movies[['title', 'release_year']].to_dict(orient='records')
+            }
+    pelicula = df[df['title'].str.lower() == titulo_de_la_filmacion.lower()]
+    votos = int(pelicula['vote_count'].values[0])
+    if votos < 2000:
+        return {"error": "La película no cumple con el mínimo de 2000 valoraciones."}
+    return {
+        "titulo": pelicula['title'],
+        "año de estreno": int(pelicula['release_year'].values[0]),
+        "votos": votos,
+        "promedio_votos": float(pelicula['vote_average'])
+        }
+
+@app.get('/actor/success')
+def get_actor(nombre_actor: str):
+
+    # Se busca el actor en la columna 'cast' y se muestra la cantidad de peliculas en las que ha participado, el retorno total y el promedio de retorno
+    actor_movies = df[df['cast'].apply(lambda x: isinstance(x, list) and any(nombre_actor.lower() in actor['name'].lower() for actor in x))]
+    if actor_movies.empty:
+        return {"error": "Actor no encontrado. Por favor, ingrese un nombre válido."}
+    cantidad_peliculas = actor_movies.shape[0]
+    retorno_total = actor_movies['revenue'].sum() - actor_movies['budget'].sum()
+    promedio_retorno = retorno_total / cantidad_peliculas if cantidad_peliculas > 0 else 0
+    return {
+        "actor": nombre_actor,
+        "cantidad_peliculas": cantidad_peliculas,
+        "retorno_total": retorno_total,
+        "promedio_retorno": promedio_retorno
+    }
+
+
+@app.get('/director/success')
+def get_director(nombre_director: str):
+
+    # Se busca el director en la columna 'crew' y se muestra la cantidad de peliculas en las que ha participado, el retorno total y el promedio de retorno
+    director_movies = df[df['crew'].apply(lambda x: isinstance(x, list) and any(nombre_director.lower() in crew_member['name'].lower() and crew_member['job'].lower() == 'director' for crew_member in x))]
+    if director_movies.empty:
+        return {"error": "Director no encontrado. Por favor, ingrese un nombre válido."}
+    peliculas = []
+    for _, row in director_movies.iterrows():
+        retorno_individual = row['revenue'] - row['budget']
+        peliculas.append({
+            "titulo": row['title'],
+            "fecha lanzamiento": row['release_date'],
+            "retorno individual": retorno_individual,
+            "costo": row['budget'],
+            "ganancia": row['revenue']
+        })
+    retorno_total = director_movies['revenue'].sum() - director_movies['budget'].sum()
+    return {
+        "director": nombre_director,
+        "retorno_total": retorno_total,
+        "peliculas": peliculas
+    }
+
+# Se hizo el respectivo EDA, y se determino que la columna 'title' es la que se usara para las recomendaciones
+# Se vectorizan los títulos de las películas usando TF-IDF y se crea el modelo KNN
+
+vectorizer = sk.feature_extraction.text.TfidfVectorizer(stop_words='english')
+tfidf_matrix = vectorizer.fit_transform(df['title'])
+
+knn = sk.neighbors.NearestNeighbors(metric='cosine', algorithm='brute')
+knn.fit(tfidf_matrix)
+
+# Se crea la función para obtener las recomendaciones
+def get_recommendations(title, df, knn, vectorizer, top_n=5):
+    # Buscar la película por el título, en caso de no encontrar se avisa, si no es exacto al título se muestran las películas que contienen el texto ingresado    
+    indices_titulo = df[df['title'].str.lower() == title.lower()].index.tolist()
+    if not indices_titulo:
+        matching_movies = df[df['title'].str.lower().str.contains(title.lower())]
+        if matching_movies.empty:
+            return {"error": "No se encontró ninguna película con el título proporcionado."}
+        else:
+            return {
+                "message": f"Se encontraron {matching_movies.shape[0]} películas con el título '{title}'.",
+                "peliculas": matching_movies[['title', 'release_year']].to_dict(orient='records')
+            }
+    # Cuando el titulo es correcto, se procede con las recomendaciones
+    
+    # Se obtiene el vector TF-IDF del título
+    title_vector = vectorizer.transform([df.loc[indices_titulo[0], 'original_title']])
+
+    # Se obtienen los índices y distancias de las películas similares
+    distances, indices = knn.kneighbors(title_vector, n_neighbors=top_n + len(indices_titulo) + 5)
+
+    # Se aplanan los índices y distancias
+    movie_indices = indices.flatten()
+    movie_indices = [i for i in movie_indices if i not in indices_titulo]
+    distances = distances.flatten()
+    distances = [d for i, d in zip(indices.flatten(), distances) if i not in indices_titulo]
+
+    # Y se obtienen las películas similares
+    similar_movies = df.iloc[movie_indices].copy()
+
+    # Se agrega la columna de similaridad
+    similar_movies['similarity_score'] = distances
+
+    # Se ordenan las películas por similaridad
+    similar_movies = similar_movies.sort_values(by='similarity_score', ascending=True)
+
+    # Formatear los títulos para incluir la popularidad
+    similar_movies['formatted_title'] = similar_movies.apply(lambda row: f"{row['title']}", axis=1)
+
+    # Excluir las películas originales de las recomendaciones
+    similar_movies = similar_movies[~similar_movies['title'].str.lower().isin(df.loc[indices_titulo, 'title'].str.lower())]
+
+    # Retornar los títulos de las películas recomendadas, excluyendo las películas originales
+    return similar_movies['formatted_title'].head(top_n).tolist()
+
+# Se crea el endpoint para obtener las recomendaciones
+@app.get("/recomendacion")
+def recomendacion(title: str):
+    return get_recommendations(title, df, knn, vectorizer)

@@ -22,8 +22,6 @@ credits_df['id'] = credits_df['id'].astype(int)
 # Se unen los DataFrames en base a la columna 'id'
 df = pd.merge(df, credits_df, on='id', how='left')
 
-# Usar únicamente la mitad del DataFrame
-df = df.sample(n=10000, random_state=1).reset_index(drop=True)
 
 #Transformacion 1
 
@@ -88,14 +86,8 @@ df.drop("homepage", axis=1, inplace=True)
 df["original_title"] = df["title"]
 
 # Función para formatear los títulos para incluir el año entre paréntesis si hay duplicados
-def format_title(row):
-    title = row['title']
-    if df[(df['title'] == row['title']) & (df.index != row.name)].shape[0] > 0:
-        title = f"{row['title']} ({row['release_year']})"
-    return title
+df['title'] = df.groupby('title').cumcount().astype(str).radd(df['title'] + ' (').radd(df['release_year'].astype(str) + ')')
 
-# Actualizar los títulos en el DataFrame
-df["title"] = df.apply(format_title, axis=1)
 
 # Creacion de la API
 app= FastAPI()
@@ -198,11 +190,15 @@ def votos_titulo(titulo_de_la_filmacion: str):
         "promedio_votos": float(pelicula['vote_average'])
         }
 
+# Se crean DF especificos para get_actor y get_director
+df_actor_success = df[['id', 'cast', 'revenue', 'budget']]
+df_director_success = df[['id', 'crew', 'title', 'release_date', 'revenue', 'budget']]
+
 @app.get('/actor/success')
 def get_actor(nombre_actor: str):
 
     # Se busca el actor en la columna 'cast' y se muestra la cantidad de peliculas en las que ha participado, el retorno total y el promedio de retorno
-    actor_movies = df[df['cast'].apply(lambda x: isinstance(x, list) and any(nombre_actor.lower() in actor['name'].lower() for actor in x))]
+    actor_movies = df_actor_success[df_actor_success['cast'].apply(lambda x: isinstance(x, list) and any(nombre_actor.lower() in actor['name'].lower() for actor in x))]
     if actor_movies.empty:
         return {"error": "Actor no encontrado. Por favor, ingrese un nombre válido."}
     cantidad_peliculas = actor_movies.shape[0]
@@ -220,7 +216,7 @@ def get_actor(nombre_actor: str):
 def get_director(nombre_director: str):
 
     # Se busca el director en la columna 'crew' y se muestra la cantidad de peliculas en las que ha participado, el retorno total y el promedio de retorno
-    director_movies = df[df['crew'].apply(lambda x: isinstance(x, list) and any(nombre_director.lower() in crew_member['name'].lower() and crew_member['job'].lower() == 'director' for crew_member in x))]
+    director_movies = df_director_success[df_director_success['crew'].apply(lambda x: isinstance(x, list) and any(nombre_director.lower() in crew_member['name'].lower() and crew_member['job'].lower() == 'director' for crew_member in x))]
     if director_movies.empty:
         return {"error": "Director no encontrado. Por favor, ingrese un nombre válido."}
     peliculas = []
@@ -248,6 +244,10 @@ tfidf_matrix = vectorizer.fit_transform(df['title'])
 
 knn = sk.neighbors.NearestNeighbors(metric='cosine', algorithm='brute')
 knn.fit(tfidf_matrix)
+
+# Crear DataFrame específico para recomendaciones
+df_recommendations = df.sort_values(by='release_date', ascending=False).head(10000)[['id', 'title', 'original_title', 'release_year']]
+
 
 # Se crea la función para obtener las recomendaciones
 def get_recommendations(title, df, knn, vectorizer, top_n=5):
@@ -297,4 +297,4 @@ def get_recommendations(title, df, knn, vectorizer, top_n=5):
 # Se crea el endpoint para obtener las recomendaciones
 @app.get("/recomendacion")
 def recomendacion(title: str):
-    return get_recommendations(title, df, knn, vectorizer)
+    return get_recommendations(title, df_recommendations, knn, vectorizer)

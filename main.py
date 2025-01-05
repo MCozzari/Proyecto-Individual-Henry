@@ -14,19 +14,6 @@ df_revenue_budget = pd.read_csv("./Datos/df_revenue_budget.csv")
 
 df['release_date'] = pd.to_datetime(df['release_date'], format='%Y-%m-%d', errors='coerce')
 
-def clear_dict(cadena): 
-        if cadena and isinstance(cadena, str):
-                if isinstance(cadena, (dict, list)):
-                        return cadena
-                try:
-                        cadena = ast.literal_eval(cadena)
-                except (ValueError, SyntaxError):
-                        cadena = json.loads(cadena.replace("'", '"'))
-                return cadena
-
-df_actor_success['cast'] = df_actor_success['cast'].map(clear_dict)
-df_director_success['crew'] = df_director_success['crew'].map(clear_dict)
-
 
 # Creacion de la API
 app= FastAPI()
@@ -133,7 +120,7 @@ def votos_titulo(titulo_de_la_filmacion: str):
 @app.get('/actor/success')
 def get_actor(nombre_actor: str):
     # Se busca el actor en la columna 'cast' y se muestra la cantidad de peliculas en las que ha participado, el retorno total y el promedio de retorno
-    actor_movies = df_actor_success[df_actor_success['cast'].apply(lambda x: isinstance(x, list) and any(nombre_actor.lower() in actor['name'].lower() for actor in x))]
+    actor_movies = df_actor_success[df_actor_success['cast'].apply(lambda x: any(nombre_actor.lower() in actor['name'].lower() for actor in ast.literal_eval(x)))]
     if actor_movies.empty:
         return {"error": "Actor no encontrado. Por favor, ingrese un nombre válido."}
     cantidad_peliculas = actor_movies.shape[0]
@@ -150,7 +137,7 @@ def get_actor(nombre_actor: str):
 def get_director(nombre_director: str):
 
     # Se busca el director en la columna 'crew' y se muestra la cantidad de peliculas en las que ha participado, el retorno total y el promedio de retorno
-    director_movies = df_director_success[df_director_success['crew'].apply(lambda x: isinstance(x, list) and any(nombre_director.lower() in crew_member['name'].lower() and crew_member['job'].lower() == 'director' for crew_member in x))]
+    director_movies = df_director_success[df_director_success['crew'].apply(lambda x: any(nombre_director.lower() in crew_member['name'].lower() and crew_member['job'].lower() == 'director' for crew_member in ast.literal_eval(x)))]
     if director_movies.empty:
         return {"error": "Director no encontrado. Por favor, ingrese un nombre válido."}
     peliculas = []

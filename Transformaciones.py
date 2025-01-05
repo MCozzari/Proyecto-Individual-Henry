@@ -39,6 +39,21 @@ def clear_dict(cadena):
 columns_to_clear = ["belongs_to_collection", "genres", "production_companies", "production_countries", "spoken_languages", "cast", "crew"]
 df[columns_to_clear] = df[columns_to_clear].swifter.applymap(clear_dict)
 
+# Desanidar y guardar solo lo necesario para actor_success y director_success
+def extract_cast(cast_list):
+    if isinstance(cast_list, list):
+        return [{'cast_id': cast['cast_id'], 'character': cast['character'], 'name': cast['name']} for cast in cast_list]
+    return []
+
+def extract_crew(crew_list):
+    if isinstance(crew_list, list):
+        return [{'job': crew['job'], 'name': crew['name']} for crew in crew_list]
+    return []
+
+# Aplicar las funciones de extracción
+df['cast'] = df['cast'].apply(extract_cast)
+df['crew'] = df['crew'].apply(extract_crew)
+
 #Transformacion 2
 
 # Se cambia el tipo de las columnas 'revenue' y 'budget' a float
@@ -94,15 +109,6 @@ def format_title(row):
 
 # Actualizar los títulos en el DataFrame
 df["title"] = df.apply(format_title, axis=1)
-
-# Función para reducir la información de la columna 'cast'
-def reduce_cast(cast_list):
-    if isinstance(cast_list, list):
-        return [{'cast_id': cast['cast_id'], 'character': cast['character'], 'name': cast['name']} for cast in cast_list]
-    return []
-
-# Aplicar la función de reducción a la columna 'cast'
-df['cast'] = df['cast'].apply(reduce_cast)
 
 # Se crean DF especificos para get_actor y get_director
 df_actor_success = df[['id', 'cast']]

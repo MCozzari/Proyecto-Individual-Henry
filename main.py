@@ -1,94 +1,14 @@
 import pandas as pd
 from fastapi import FastAPI
-import ast
-import json
-from typing import Optional, List
 import sklearn as sk
-import swifter
 
-# Se cargan los archivos CSV
-df=pd.read_csv("Movies/movies_dataset.csv", dtype={"popularity": str})
+# Cargar los datos desde los archivos CSV generados en Transformaciones.py
+df = pd.read_csv("./Datos/df.csv")
+df_actor_success = pd.read_csv("./Datos/df_actor_success.csv")
+df_director_success = pd.read_csv("./Datos/df_director_success.csv")
+df_recommendations = pd.read_csv("./Datos/df_recommendations.csv")
+df_revenue_budget = pd.read_csv("./Datos/df_revenue_budget.csv")
 
-credits_df = pd.read_csv("Movies/credits.csv")
-
-df.drop([19730,29503,35587], inplace=True) #Elimino esas 3 filas debido a que dan error, al revisarlas manualmente se ve que les falta informacion
-
-# Se determino con este codigo que las 3 filas eliminadas son las que tienen valores nulos en la columna 'release_date'
-#nan_rows = df[df['release_date'].isna()]
-
-# Se cambia el valor del id a int despues de eliminar las 3 filas
-df['id'] = df['id'].astype(int)
-credits_df['id'] = credits_df['id'].astype(int)
-
-# Se unen los DataFrames en base a la columna 'id'
-df = pd.merge(df, credits_df, on='id', how='left')
-
-
-#Transformacion 1
-
-# Función para convertir cadenas de texto en diccionarios o listas de diccionarios, para acceder directamente a los valores
-def clear_dict(cadena): 
-        if cadena and isinstance(cadena, str):
-                if isinstance(cadena, (dict, list)):
-                        return cadena
-                try:
-                        cadena = ast.literal_eval(cadena)
-                except (ValueError, SyntaxError):
-                        cadena = json.loads(cadena.replace("'", '"'))
-                return cadena
-        
-# Aplicar la función de conversión a varias columnas usando swifter
-columns_to_clear = ["belongs_to_collection", "genres", "production_companies", "production_countries", "spoken_languages", "cast", "crew"]
-df[columns_to_clear] = df[columns_to_clear].swifter.applymap(clear_dict)
-
-#Transformacion 2
-
-# Se cambia el tipo de las columnas 'revenue' y 'budget' a float
-df["revenue"]=df["revenue"].astype(float)
-
-df["budget"]=df["budget"].astype(float)
-
-df["revenue"]=df["revenue"].fillna(0)
-
-df["budget"]=df["budget"].fillna(0)
-
-# Y también la columna 'popularity' a float y 'title' a string
-
-df["popularity"]=df["popularity"].astype(float)
-
-df["title"]=df["title"].astype(str)
-
-#Transformacion 3
-
-# Se convierte la columna 'release_date' a datetime
-df["release_date"] = pd.to_datetime(df["release_date"], format='%Y-%m-%d',errors='coerce') #Debido a un error, se agrego el error="coerce"
-df = df.dropna(subset="release_date")
-
-# y se crea la columna release_year
-df["release_year"] = df["release_date"].dt.year
-
-
-#Transformacion 4
-
-# Creacion de la columna 'return' que representa la relación entre la ganancia y el presupuesto
-df['return'] = df['revenue'] / df['budget']
-df['return'] = df['return'].fillna(0)
-
-#Transformacion 5
-
-# Eliminacion de las columnas que no se necesitan
-df.drop("video", axis=1, inplace=True)
-df.drop("imdb_id", axis=1, inplace=True)
-df.drop("adult", axis=1, inplace=True)
-df.drop("original_title", axis=1, inplace=True)
-df.drop("poster_path", axis=1, inplace=True)
-df.drop("homepage", axis=1, inplace=True)
-
-# Mantener una columna con el título original
-df["original_title"] = df["title"]
-
-# Función para formatear los títulos para incluir el año entre paréntesis si hay duplicados
-df['title'] = df.groupby('title').cumcount().astype(str).radd(df['title'] + ' (').radd(df['release_year'].astype(str) + ')')
 
 
 # Creacion de la API
@@ -192,10 +112,6 @@ def votos_titulo(titulo_de_la_filmacion: str):
         "promedio_votos": float(pelicula['vote_average'])
         }
 
-# Se crean DF especificos para get_actor y get_director
-df_actor_success = df[['id', 'cast', 'revenue', 'budget']]
-df_director_success = df[['id', 'crew', 'title', 'release_date', 'revenue', 'budget']]
-
 @app.get('/actor/success')
 def get_actor(nombre_actor: str):
     # Se busca el actor en la columna 'cast' y se muestra la cantidad de peliculas en las que ha participado, el retorno total y el promedio de retorno
@@ -203,7 +119,7 @@ def get_actor(nombre_actor: str):
     if actor_movies.empty:
         return {"error": "Actor no encontrado. Por favor, ingrese un nombre válido."}
     cantidad_peliculas = actor_movies.shape[0]
-    retorno_total = actor_movies['revenue'].sum() - actor_movies['budget'].sum()
+    retorno_total = df_revenue_budget.loc[df_revenue_budget['id'].isin(actor_movies['id']), 'revenue'].sum() - df_revenue_budget.loc[df_revenue_budget['id'].isin(actor_movies['id']), 'budget'].sum()
     promedio_retorno = retorno_total / cantidad_peliculas if cantidad_peliculas > 0 else 0
     return {
         "actor": nombre_actor,
@@ -221,15 +137,15 @@ def get_director(nombre_director: str):
         return {"error": "Director no encontrado. Por favor, ingrese un nombre válido."}
     peliculas = []
     for _, row in director_movies.iterrows():
-        retorno_individual = row['revenue'] - row['budget']
+        retorno_individual = df_revenue_budget.loc[df_revenue_budget['id'] == row['id'], 'revenue'].values[0] - df_revenue_budget.loc[df_revenue_budget['id'] == row['id'], 'budget'].values[0]
         peliculas.append({
             "titulo": row['title'],
             "fecha lanzamiento": row['release_date'],
             "retorno individual": retorno_individual,
-            "costo": row['budget'],
-            "ganancia": row['revenue']
+            "costo": df_revenue_budget.loc[df_revenue_budget['id'] == row['id'], 'budget'].values[0],
+            "ganancia": df_revenue_budget.loc[df_revenue_budget['id'] == row['id'], 'revenue'].values[0]
         })
-    retorno_total = director_movies['revenue'].sum() - director_movies['budget'].sum()
+    retorno_total = df_revenue_budget.loc[df_revenue_budget['id'].isin(director_movies['id']), 'revenue'].sum() - df_revenue_budget.loc[df_revenue_budget['id'].isin(director_movies['id']), 'budget'].sum()
     return {
         "director": nombre_director,
         "retorno_total": retorno_total,
@@ -244,9 +160,6 @@ tfidf_matrix = vectorizer.fit_transform(df['title'])
 
 knn = sk.neighbors.NearestNeighbors(metric='cosine', algorithm='brute')
 knn.fit(tfidf_matrix)
-
-# Crear DataFrame específico para recomendaciones
-df_recommendations = df.sort_values(by='release_date', ascending=False).head(10000)[['id', 'title', 'original_title', 'release_year']]
 
 
 # Se crea la función para obtener las recomendaciones

@@ -111,9 +111,13 @@ def format_title(row):
 df["title"] = df.apply(format_title, axis=1)
 
 # Se crean DF especificos para get_actor y get_director
-df_actor_success = df[['id', 'cast']]
+df_actor_success = df[['id', 'cast']].explode('cast').reset_index(drop=True)
+df_actor_success = pd.concat([df_actor_success.drop(['cast'], axis=1), df_actor_success['cast'].apply(pd.Series)], axis=1)
+
 df_revenue_budget = df[['id', 'revenue', 'budget']]
-df_director_success = df[['id', 'crew', 'title', 'release_date']]
+df_director_success = df[['id', 'crew', 'title', 'release_date']].explode('crew').reset_index(drop=True)
+df_director_success = pd.concat([df_director_success.drop(['crew'], axis=1), df_director_success['crew'].apply(pd.Series)], axis=1)
+df_director_success = df_director_success[df_director_success['job'].str.lower() == 'director']
 
 # Crear DataFrame específico para recomendaciones
 df_recommendations = df[['id', 'title', 'original_title', 'release_year']]

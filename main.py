@@ -1,6 +1,9 @@
 import pandas as pd
 from fastapi import FastAPI
 import sklearn as sk
+import ast
+import json
+import swifter
 
 # Cargar los datos desde los archivos CSV generados en Transformaciones.py
 df = pd.read_csv("./Datos/df.csv")
@@ -9,6 +12,20 @@ df_director_success = pd.read_csv("./Datos/df_director_success.csv")
 df_recommendations = pd.read_csv("./Datos/df_recommendations.csv")
 df_revenue_budget = pd.read_csv("./Datos/df_revenue_budget.csv")
 
+df['release_date'] = pd.to_datetime(df['release_date'], format='%Y-%m-%d', errors='coerce')
+
+def clear_dict(cadena): 
+        if cadena and isinstance(cadena, str):
+                if isinstance(cadena, (dict, list)):
+                        return cadena
+                try:
+                        cadena = ast.literal_eval(cadena)
+                except (ValueError, SyntaxError):
+                        cadena = json.loads(cadena.replace("'", '"'))
+                return cadena
+
+df_actor_success['cast'] = df_actor_success['cast'].map(clear_dict)
+df_director_success['crew'] = df_director_success['crew'].map(clear_dict)
 
 
 # Creacion de la API
@@ -33,12 +50,13 @@ meses = { 'enero': 1,
 # Se crea el endpoint para obtener la cantidad de filmaciones por mes
 @app.get('/movies/release_date')
 def cantidad_filmaciones_mes(mes: str):
-     mes = mes.lower()
-     if mes not in meses: return {"error": "Mes inválido. Por favor, ingrese un mes en español correctamente."}
-     mes_num = meses[mes] 
-     peliculas_mes = df[df['release_date'].dt.month == mes_num] 
-     cantidad = peliculas_mes.shape[0] 
-     return {"mes": mes, "cantidad": cantidad, "peliculas": peliculas_mes['title'].tolist()}
+    mes = mes.lower()
+    if mes not in meses: 
+        return {"error": "Mes inválido. Por favor, ingrese un mes en español correctamente."}
+    mes_num = meses[mes] 
+    peliculas_mes = df[df['release_date'].dt.month == mes_num]
+    cantidad = peliculas_mes.shape[0] 
+    return {"mes": mes, "cantidad": cantidad, "peliculas": peliculas_mes['title'].tolist()}
 
 # Se designa a cada dia de la semana su respectivo valor numerico
 dias_semana = {
@@ -163,11 +181,11 @@ knn.fit(tfidf_matrix)
 
 
 # Se crea la función para obtener las recomendaciones
-def get_recommendations(title, df, knn, vectorizer, top_n=5):
+def get_recommendations(title, df_recommendations, knn, vectorizer, top_n=5):
     # Buscar la película por el título, en caso de no encontrar se avisa, si no es exacto al título se muestran las películas que contienen el texto ingresado    
-    indices_titulo = df[df['title'].str.lower() == title.lower()].index.tolist()
+    indices_titulo = df_recommendations[df_recommendations['title'].str.lower() == title.lower()].index.tolist()
     if not indices_titulo:
-        matching_movies = df[df['title'].str.lower().str.contains(title.lower())]
+        matching_movies = df_recommendations[df_recommendations['title'].str.lower().str.contains(title.lower())]
         if matching_movies.empty:
             return {"error": "No se encontró ninguna película con el título proporcionado."}
         else:
@@ -177,20 +195,22 @@ def get_recommendations(title, df, knn, vectorizer, top_n=5):
             }
     # Cuando el titulo es correcto, se procede con las recomendaciones
     
-    # Se obtiene el vector TF-IDF del título
-    title_vector = vectorizer.transform([df.loc[indices_titulo[0], 'original_title']])
+    # Se obtiene el vector TF-IDF del título original
+    title_vector = vectorizer.transform([df_recommendations.loc[indices_titulo[0], 'original_title']])
 
     # Se obtienen los índices y distancias de las películas similares
     distances, indices = knn.kneighbors(title_vector, n_neighbors=top_n + len(indices_titulo) + 5)
 
     # Se aplanan los índices y distancias
     movie_indices = indices.flatten()
-    movie_indices = [i for i in movie_indices if i not in indices_titulo]
     distances = distances.flatten()
+
+    # Excluir la película original de las recomendaciones
+    movie_indices = [i for i in movie_indices if i not in indices_titulo]
     distances = [d for i, d in zip(indices.flatten(), distances) if i not in indices_titulo]
 
     # Y se obtienen las películas similares
-    similar_movies = df.iloc[movie_indices].copy()
+    similar_movies = df_recommendations.iloc[movie_indices].copy()
 
     # Se agrega la columna de similaridad
     similar_movies['similarity_score'] = distances
@@ -198,14 +218,8 @@ def get_recommendations(title, df, knn, vectorizer, top_n=5):
     # Se ordenan las películas por similaridad
     similar_movies = similar_movies.sort_values(by='similarity_score', ascending=True)
 
-    # Formatear los títulos para incluir la popularidad
-    similar_movies['formatted_title'] = similar_movies.apply(lambda row: f"{row['title']}", axis=1)
-
-    # Excluir las películas originales de las recomendaciones
-    similar_movies = similar_movies[~similar_movies['title'].str.lower().isin(df.loc[indices_titulo, 'title'].str.lower())]
-
-    # Retornar los títulos de las películas recomendadas, excluyendo las películas originales
-    return similar_movies['formatted_title'].head(top_n).tolist()
+    # Retornar los títulos de las películas recomendadas
+    return similar_movies['title'].head(top_n).tolist()
 
 # Se crea el endpoint para obtener las recomendaciones
 @app.get("/recomendacion")

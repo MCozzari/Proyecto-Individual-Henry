@@ -5,7 +5,7 @@ import json
 from typing import Optional, List
 
 # Se cargan los archivos CSV
-df=pd.read_csv("Movies/movies_dataset.csv", dtype={"popularity": str})
+df=pd.read_csv("Movies/movies_dataset.csv", dtype={"popularity": str} )
 
 credits_df = pd.read_csv("Movies/credits.csv")
 
@@ -86,7 +86,14 @@ df.drop("homepage", axis=1, inplace=True)
 df["original_title"] = df["title"]
 
 # Función para formatear los títulos para incluir el año entre paréntesis si hay duplicados
-df['title'] = df.groupby('title').cumcount().astype(str).radd(df['title'] + ' (').radd(df['release_year'].astype(str) + ')')
+def format_title(row):
+    title = row['title']
+    if df[(df['title'] == row['title']) & (df.index != row.name)].shape[0] > 0:
+        title = f"{row['title']} ({row['release_year']})"
+    return title
+
+# Actualizar los títulos en el DataFrame
+df["title"] = df.apply(format_title, axis=1)
 
 # Función para reducir la información de la columna 'cast'
 def reduce_cast(cast_list):
@@ -101,8 +108,9 @@ df['cast'] = df['cast'].apply(reduce_cast)
 df_actor_success = df[['id', 'cast']]
 df_revenue_budget = df[['id', 'revenue', 'budget']]
 df_director_success = df[['id', 'crew', 'title', 'release_date']]
+
 # Crear DataFrame específico para recomendaciones
-df_recommendations = df.sort_values(by='release_date', ascending=False)[['id', 'title', 'original_title', 'release_year']]
+df_recommendations = df[['id', 'title', 'original_title', 'release_year']]
 df = df[['id', 'title', 'release_year', 'release_date', 'vote_average', 'popularity', 'vote_count']]
 
 df.to_csv("./Datos/df.csv", index=False)

@@ -1,18 +1,15 @@
 import pandas as pd
 from fastapi import FastAPI
 import sklearn as sk
-import ast
-import json
-import swifter
 
 # Cargar los datos desde los archivos CSV generados en Transformaciones.py
-df = pd.read_csv("./Datos/df.csv")
+df_funciones = pd.read_csv("./Datos/df_funciones.csv")
 df_actor_success = pd.read_csv("./Datos/df_actor_success.csv")
 df_director_success = pd.read_csv("./Datos/df_director_success.csv")
 df_recommendations = pd.read_csv("./Datos/df_recommendations.csv")
 df_revenue_budget = pd.read_csv("./Datos/df_revenue_budget.csv")
 
-df['release_date'] = pd.to_datetime(df['release_date'], format='%Y-%m-%d', errors='coerce')
+df_funciones['release_date'] = pd.to_datetime(df_funciones['release_date'], format='%Y-%m-%d', errors='coerce')
 
 
 # Creacion de la API
@@ -41,7 +38,7 @@ def cantidad_filmaciones_mes(mes: str):
     if mes not in meses: 
         return {"error": "Mes inválido. Por favor, ingrese un mes en español correctamente."}
     mes_num = meses[mes] 
-    peliculas_mes = df[df['release_date'].dt.month == mes_num]
+    peliculas_mes = df_funciones[df_funciones['release_date'].dt.month == mes_num]
     cantidad = peliculas_mes.shape[0] 
     return {"mes": mes, "cantidad": cantidad, "peliculas": peliculas_mes['title'].tolist()}
 
@@ -63,7 +60,7 @@ def cantidad_filmaciones_dia(dia: str):
     if dia not in dias_semana:
         return {"error": "Día inválido. Por favor, ingrese un día en español correctamente."}
     dia_num = dias_semana[dia]
-    peliculas_dia = df[df['release_date'].dt.dayofweek == dia_num]
+    peliculas_dia = df_funciones[df_funciones['release_date'].dt.dayofweek == dia_num]
     cantidad = peliculas_dia.shape[0]
     return {"dia": dia, "cantidad": cantidad, "peliculas": peliculas_dia['title'].tolist()}
 
@@ -72,9 +69,9 @@ def cantidad_filmaciones_dia(dia: str):
 def score_titulo(titulo_de_la_filmacion: str):
     # Se busca la película por el título, en caso de no encontrar se avisa, si no es exacto al título se muestran las películas que contienen el texto ingresado 
     # y en caso de encontrarlo se muestra el título, el año de estreno y el score
-    indices_titulo = df[df['title'].str.lower() == titulo_de_la_filmacion.lower()].index.tolist()
+    indices_titulo = df_funciones[df_funciones['title'].str.lower() == titulo_de_la_filmacion.lower()].index.tolist()
     if not indices_titulo:
-        matching_movies = df[df['title'].str.lower().str.contains(titulo_de_la_filmacion.lower())]
+        matching_movies = df_funciones[df_funciones['title'].str.lower().str.contains(titulo_de_la_filmacion.lower())]
         if matching_movies.empty:
             return {"error": "No se encontró ninguna película con el título proporcionado."}
         else:
@@ -82,7 +79,7 @@ def score_titulo(titulo_de_la_filmacion: str):
                 "message": f"Se encontraron {matching_movies.shape[0]} películas con el título '{titulo_de_la_filmacion}'.",
                 "peliculas": matching_movies[['title', 'release_year']].to_dict(orient='records')
             }
-    pelicula = df[df['title'].str.lower() == titulo_de_la_filmacion.lower()]
+    pelicula = df_funciones[df_funciones['title'].str.lower() == titulo_de_la_filmacion.lower()]
     titulo = pelicula['title'].values[0]
     anio_estreno = int(pelicula['release_year'].values[0])
     score = pelicula['popularity'].values[0]
@@ -95,10 +92,10 @@ def votos_titulo(titulo_de_la_filmacion: str):
     # Se busca la película por el título, en caso de no encontrar se avisa, si no es exacto al título se muestran las películas que contienen el texto ingresado 
     # y en caso de encontrarlo se muestra el título, el año de estreno, el score y el promedio de votos
 
-    indices_titulo = df[df['title'].str.lower() == titulo_de_la_filmacion.lower()].index.tolist()
+    indices_titulo = df_funciones[df_funciones['title'].str.lower() == titulo_de_la_filmacion.lower()].index.tolist()
     
     if not indices_titulo:
-        matching_movies = df[df['title'].str.lower().str.contains(titulo_de_la_filmacion.lower())]
+        matching_movies = df_funciones[df_funciones['title'].str.lower().str.contains(titulo_de_la_filmacion.lower())]
         if matching_movies.empty:
             return {"error": "No se encontró ninguna película con el título proporcionado."}
         else:
@@ -106,7 +103,7 @@ def votos_titulo(titulo_de_la_filmacion: str):
                 "message": f"Se encontraron {matching_movies.shape[0]} películas con el título '{titulo_de_la_filmacion}'.",
                 "peliculas": matching_movies[['title', 'release_year']].to_dict(orient='records')
             }
-    pelicula = df[df['title'].str.lower() == titulo_de_la_filmacion.lower()]
+    pelicula = df_funciones[df_funciones['title'].str.lower() == titulo_de_la_filmacion.lower()]
     votos = int(pelicula['vote_count'].values[0])
     if votos < 2000:
         return {"error": "La película no cumple con el mínimo de 2000 valoraciones."}
@@ -161,7 +158,7 @@ def get_director(nombre_director: str):
 # Se vectorizan los títulos de las películas usando TF-IDF y se crea el modelo KNN
 
 vectorizer = sk.feature_extraction.text.TfidfVectorizer(stop_words='english')
-tfidf_matrix = vectorizer.fit_transform(df['title'])
+tfidf_matrix = vectorizer.fit_transform(df_recommendations['title'])
 
 knn = sk.neighbors.NearestNeighbors(metric='cosine', algorithm='brute')
 knn.fit(tfidf_matrix)
@@ -169,7 +166,7 @@ knn.fit(tfidf_matrix)
 
 # Se crea la función para obtener las recomendaciones
 def get_recommendations(title, df_recommendations, knn, vectorizer, top_n=5):
-    # Buscar la película por el título, en caso de no encontrar se avisa, si no es exacto al título se muestran las películas que contienen el texto ingresado    
+    # Se busca la película por el título, en caso de no encontrar se avisa, si no es exacto al título se muestran las películas que contienen el texto ingresado    
     indices_titulo = df_recommendations[df_recommendations['title'].str.lower() == title.lower()].index.tolist()
     if not indices_titulo:
         matching_movies = df_recommendations[df_recommendations['title'].str.lower().str.contains(title.lower())]

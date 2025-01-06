@@ -35,11 +35,11 @@ def clear_dict(cadena):
                         cadena = json.loads(cadena.replace("'", '"'))
                 return cadena
         
-# Aplicar la función de conversión a varias columnas usando swifter
+# Se aplica la función de conversión a varias columnas usando swifter
 columns_to_clear = ["belongs_to_collection", "genres", "production_companies", "production_countries", "spoken_languages", "cast", "crew"]
 df[columns_to_clear] = df[columns_to_clear].swifter.applymap(clear_dict)
 
-# Desanidar y guardar solo lo necesario para actor_success y director_success
+# Se desanidan y guardan solo lo necesario para actor_success y director_success
 def extract_cast(cast_list):
     if isinstance(cast_list, list):
         return [{'cast_id': cast['cast_id'], 'character': cast['character'], 'name': cast['name']} for cast in cast_list]
@@ -47,10 +47,10 @@ def extract_cast(cast_list):
 
 def extract_crew(crew_list):
     if isinstance(crew_list, list):
-        return [{'job': crew['job'], 'name': crew['name']} for crew in crew_list]
+        return [{'job': crew['job'], 'name': crew['name']} for crew in crew_list if crew['job'].lower() == 'director']
     return []
 
-# Aplicar las funciones de extracción
+# Se aplica las funciones de extracción
 df['cast'] = df['cast'].apply(extract_cast)
 df['crew'] = df['crew'].apply(extract_crew)
 
@@ -119,12 +119,13 @@ df_director_success = df[['id', 'crew', 'title', 'release_date']].explode('crew'
 df_director_success = pd.concat([df_director_success.drop(['crew'], axis=1), df_director_success['crew'].apply(pd.Series)], axis=1)
 df_director_success = df_director_success[df_director_success['job'].str.lower() == 'director']
 
-# Crear DataFrame específico para recomendaciones
+# Se Crea un DataFrame específico para recomendaciones y uno para las demás funciones
 df_recommendations = df[['id', 'title', 'original_title', 'release_year']]
-df = df[['id', 'title', 'release_year', 'release_date', 'vote_average', 'popularity', 'vote_count']]
+df_funciones = df[['id', 'title', 'release_year', 'release_date', 'vote_average', 'popularity', 'vote_count']]
 
-df.to_csv("./Datos/df.csv", index=False)
+df_funciones.to_csv("./Datos/df_funciones.csv", index=False)
 df_actor_success.to_csv("./Datos/df_actor_success.csv", index=False)
 df_director_success.to_csv("./Datos/df_director_success.csv", index=False)
 df_recommendations.to_csv("./Datos/df_recommendations.csv", index=False)
 df_revenue_budget.to_csv("./Datos/df_revenue_budget.csv", index=False)
+df.to_csv("./Datos/df.csv", index=False)

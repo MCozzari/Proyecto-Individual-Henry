@@ -86,11 +86,11 @@ def score_titulo(titulo_de_la_filmacion: str):
     return {"titulo": titulo, "año de estreno": anio_estreno, "score": score}
 
 
-# Se crea el endpoint para obtener el score de una pelicula y el año de estreno
+# Se crea el endpoint para obtener los votos y el promedio de una pelicula y el año de estreno
 @app.get('/movies/votes')
 def votos_titulo(titulo_de_la_filmacion: str):
     # Se busca la película por el título, en caso de no encontrar se avisa, si no es exacto al título se muestran las películas que contienen el texto ingresado 
-    # y en caso de encontrarlo se muestra el título, el año de estreno, el score y el promedio de votos
+    # y en caso de encontrarlo se muestra el título, el año de estreno, los votos y el promedio de votos
 
     indices_titulo = df_funciones[df_funciones['title'].str.lower() == titulo_de_la_filmacion.lower()].index.tolist()
     

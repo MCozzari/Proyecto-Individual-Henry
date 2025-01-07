@@ -4,16 +4,6 @@
 
 Movies List API es una aplicación que proporciona información sobre películas, incluyendo recomendaciones basadas en el título de la película, cantidad de filmaciones por mes y día, y estadísticas sobre actores y directores. La API está construida utilizando FastAPI y utiliza técnicas de procesamiento de lenguaje natural para recomendaciones de películas.
 
-## Tabla de Contenidos
-
-- [Descripción](#descripción)
-- [Trabajo Realizado](#trabajo-realizado)
-- [Uso](#uso)
-- [Endpoints](#endpoints)
-- [Estructura del Proyecto](#estructura-del-proyecto)
-- [Contribuciones](#contribuciones)
-- [Licencia](#licencia)
-
 ## Trabajo Realizado
 
 ### 1. Preparación de Datos
@@ -64,8 +54,6 @@ Puedes acceder a la API a través del siguiente enlace de Render:
 
 Una vez que la aplicación esté en funcionamiento, puedes acceder a la documentación interactiva de la API en:
 - `https://proyecto-individual-henry-kzxy.onrender.com/docs` (Swagger UI)
-
-## Endpoints
 
 ### Obtener la cantidad de filmaciones por mes
 - **Ejemplo de consulta:**
